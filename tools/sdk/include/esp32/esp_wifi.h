@@ -79,32 +79,80 @@ extern "C" {
 
 #define ESP_ERR_WIFI_NOT_INIT    (ESP_ERR_WIFI_BASE + 1)   /*!< WiFi driver was not installed by esp_wifi_init */
 #define ESP_ERR_WIFI_NOT_STARTED (ESP_ERR_WIFI_BASE + 2)   /*!< WiFi driver was not started by esp_wifi_start */
-#define ESP_ERR_WIFI_IF          (ESP_ERR_WIFI_BASE + 3)   /*!< WiFi interface error */
-#define ESP_ERR_WIFI_MODE        (ESP_ERR_WIFI_BASE + 4)   /*!< WiFi mode error */
-#define ESP_ERR_WIFI_STATE       (ESP_ERR_WIFI_BASE + 5)   /*!< WiFi internal state error */
-#define ESP_ERR_WIFI_CONN        (ESP_ERR_WIFI_BASE + 6)   /*!< WiFi internal control block of station or soft-AP error */
-#define ESP_ERR_WIFI_NVS         (ESP_ERR_WIFI_BASE + 7)   /*!< WiFi internal NVS module error */
-#define ESP_ERR_WIFI_MAC         (ESP_ERR_WIFI_BASE + 8)   /*!< MAC address is invalid */
-#define ESP_ERR_WIFI_SSID        (ESP_ERR_WIFI_BASE + 9)   /*!< SSID is invalid */
-#define ESP_ERR_WIFI_PASSWORD    (ESP_ERR_WIFI_BASE + 10)  /*!< Password is invalid */
-#define ESP_ERR_WIFI_TIMEOUT     (ESP_ERR_WIFI_BASE + 11)  /*!< Timeout error */
-#define ESP_ERR_WIFI_WAKE_FAIL   (ESP_ERR_WIFI_BASE + 12)  /*!< WiFi is in sleep state(RF closed) and wakeup fail */
+#define ESP_ERR_WIFI_NOT_STOPPED (ESP_ERR_WIFI_BASE + 3)   /*!< WiFi driver was not stopped by esp_wifi_stop */
+#define ESP_ERR_WIFI_IF          (ESP_ERR_WIFI_BASE + 4)   /*!< WiFi interface error */
+#define ESP_ERR_WIFI_MODE        (ESP_ERR_WIFI_BASE + 5)   /*!< WiFi mode error */
+#define ESP_ERR_WIFI_STATE       (ESP_ERR_WIFI_BASE + 6)   /*!< WiFi internal state error */
+#define ESP_ERR_WIFI_CONN        (ESP_ERR_WIFI_BASE + 7)   /*!< WiFi internal control block of station or soft-AP error */
+#define ESP_ERR_WIFI_NVS         (ESP_ERR_WIFI_BASE + 8)   /*!< WiFi internal NVS module error */
+#define ESP_ERR_WIFI_MAC         (ESP_ERR_WIFI_BASE + 9)   /*!< MAC address is invalid */
+#define ESP_ERR_WIFI_SSID        (ESP_ERR_WIFI_BASE + 10)   /*!< SSID is invalid */
+#define ESP_ERR_WIFI_PASSWORD    (ESP_ERR_WIFI_BASE + 11)  /*!< Password is invalid */
+#define ESP_ERR_WIFI_TIMEOUT     (ESP_ERR_WIFI_BASE + 12)  /*!< Timeout error */
+#define ESP_ERR_WIFI_WAKE_FAIL   (ESP_ERR_WIFI_BASE + 13)  /*!< WiFi is in sleep state(RF closed) and wakeup fail */
 
 /**
  * @brief WiFi stack configuration parameters passed to esp_wifi_init call.
  */
 typedef struct {
-    system_event_handler_t event_handler;  /**< WiFi event handler */
-    uint32_t rx_buf_num;  /**< WiFi RX buffer number */
+    system_event_handler_t event_handler;          /**< WiFi event handler */
+    int                    static_rx_buf_num;      /**< WiFi static RX buffer number */
+    int                    dynamic_rx_buf_num;     /**< WiFi dynamic RX buffer number */
+    int                    tx_buf_type;            /**< WiFi TX buffer type */
+    int                    static_tx_buf_num;      /**< WiFi static TX buffer number */
+    int                    dynamic_tx_buf_num;     /**< WiFi dynamic TX buffer number */
+    int                    ampdu_enable;           /**< WiFi AMPDU feature enable flag */
+    int                    nvs_enable;             /**< WiFi NVS flash enable flag */
+    int                    nano_enable;            /**< Nano option for printf/scan family enable flag */
+    int                    magic;                  /**< WiFi init magic number, it should be the last field */
 } wifi_init_config_t;
 
+#ifdef CONFIG_ESP32_WIFI_STATIC_TX_BUFFER_NUM
+#define WIFI_STATIC_TX_BUFFER_NUM CONFIG_ESP32_WIFI_STATIC_TX_BUFFER_NUM
+#else
+#define WIFI_STATIC_TX_BUFFER_NUM 0
+#endif
+
+#ifdef CONFIG_ESP32_WIFI_DYNAMIC_TX_BUFFER_NUM
+#define WIFI_DYNAMIC_TX_BUFFER_NUM CONFIG_ESP32_WIFI_DYNAMIC_TX_BUFFER_NUM
+#else
+#define WIFI_DYNAMIC_TX_BUFFER_NUM 0
+#endif
+
+#if CONFIG_ESP32_WIFI_AMPDU_ENABLED
+#define WIFI_AMPDU_ENABLED        1
+#else
+#define WIFI_AMPDU_ENABLED        0
+#endif
+
+#if CONFIG_ESP32_WIFI_NVS_ENABLED
+#define WIFI_NVS_ENABLED          1
+#else
+#define WIFI_NVS_ENABLED          0
+#endif
+
+#if CONFIG_NEWLIB_NANO_FORMAT
+#define WIFI_NANO_FORMAT_ENABLED  1
+#else
+#define WIFI_NANO_FORMAT_ENABLED  0
+#endif
+ 
+#define WIFI_INIT_CONFIG_MAGIC    0x1F2F3F4F
 #ifdef CONFIG_WIFI_ENABLED
 #define WIFI_INIT_CONFIG_DEFAULT() { \
     .event_handler = &esp_event_send, \
-    .rx_buf_num = CONFIG_ESP32_WIFI_RX_BUFFER_NUM, \
+    .static_rx_buf_num = CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM,\
+    .dynamic_rx_buf_num = CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM,\
+    .tx_buf_type = CONFIG_ESP32_WIFI_TX_BUFFER_TYPE,\
+    .static_tx_buf_num = WIFI_STATIC_TX_BUFFER_NUM,\
+    .dynamic_tx_buf_num = WIFI_DYNAMIC_TX_BUFFER_NUM,\
+    .ampdu_enable = WIFI_AMPDU_ENABLED,\
+    .nvs_enable = WIFI_NVS_ENABLED,\
+    .nano_enable = WIFI_NANO_FORMAT_ENABLED,\
+    .magic = WIFI_INIT_CONFIG_MAGIC\
 };
 #else
-#define WIFI_INIT_CONFIG_DEFAULT #error Wifi is disabled in config, WIFI_INIT_CONFIG_DEFAULT will not work
+#define WIFI_INIT_CONFIG_DEFAULT() {0}; _Static_assert(0, "please enable wifi in menuconfig to use esp_wifi.h");
 #endif
 
 /**
@@ -113,8 +161,11 @@ typedef struct {
   *         WiFi NVS structure etc, this WiFi also start WiFi task
   *
   * @attention 1. This API must be called before all other WiFi API can be called
-  * @attention 2. event_handler field in cfg should be set to a valid event handler function.
-  *            In most cases, use the WIFI_INIT_CONFIG_DEFAULT macro which sets esp_event_send().
+  * @attention 2. Always use WIFI_INIT_CONFIG_DEFAULT macro to init the config to default values, this can
+  *               guarantee all the fields got correct value when more fields are added into wifi_init_config_t
+  *               in future release. If you want to set your owner initial values, overwrite the default values
+  *               which are set by WIFI_INIT_CONFIG_DEFAULT, please be notified that the field 'magic' of 
+  *               wifi_init_config_t should always be WIFI_INIT_CONFIG_MAGIC!
   *
   * @param  config provide WiFi init configuration
   *
@@ -262,6 +313,8 @@ esp_err_t esp_wifi_deauth_sta(uint16_t aid);
   * @attention If this API is called, the found APs are stored in WiFi driver dynamic allocated memory and the
   *            will be freed in esp_wifi_get_ap_list, so generally, call esp_wifi_get_ap_list to cause
   *            the memory to be freed once the scan is done
+  * @attention The values of maximum active scan time and passive scan time per channel are limited to 1500 milliseconds.
+  *            Values above 1500ms may cause station to disconnect from AP and are not recommended.
   *
   * @param     config  configuration of scanning
   * @param     block if block is true, this API will block the caller until the scan is done, otherwise
@@ -421,6 +474,7 @@ esp_err_t esp_wifi_get_bandwidth(wifi_interface_t ifx, wifi_bandwidth_t *bw);
   * @brief     Set primary/secondary channel of ESP32
   *
   * @attention 1. This is a special API for sniffer
+  * @attention 2. This API should be called after esp_wifi_start() or esp_wifi_set_promiscuous()
   *
   * @param     primary  for HT20, primary is the channel number, for HT40, primary is the primary channel
   * @param     second   for HT20, second is ignored, for HT40, second is the second channel

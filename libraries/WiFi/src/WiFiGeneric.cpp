@@ -42,74 +42,78 @@ extern "C" {
 #include "lwip/dns.h"
 #include "esp_ipc.h"
 
-#include "esp32-hal-log.h"
-
-/**
- * Boot and start WiFi
- * This method get's called on boot if you use any of the WiFi methods.
- * If you do not link to this library, WiFi will not be started.
- * */
-static bool _esp_wifi_initalized = false;
-extern void initWiFi()
-{
-#if !CONFIG_ESP32_PHY_AUTO_INIT
-    arduino_phy_init();
-#endif
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    tcpip_adapter_init();
-    esp_event_loop_init(&WiFiGenericClass::_eventCallback, NULL);
-    esp_wifi_init(&cfg);
-    esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    _esp_wifi_initalized = true;
-}
 
 } //extern "C"
+
+#include "esp32-hal-log.h"
 
 #undef min
 #undef max
 #include <vector>
 
-static bool _esp_wifi_start()
-{
-    static bool started = false;
-    esp_err_t err;
+void tcpipInit(){
+    static bool initialized = false;
+    if(!initialized){
+        initialized = true;
+        tcpip_adapter_init();
+        esp_event_loop_init(&WiFiGenericClass::_eventCallback, NULL);
+    }
+}
 
-    if(!_esp_wifi_initalized){
-        initWiFi();
-        if(!_esp_wifi_initalized){
-            log_w("not initialized");
+static bool wifiLowLevelInit(){
+    static bool lowLevelInitDone = false;
+    if(!lowLevelInitDone){
+        tcpipInit();
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        esp_err_t err = esp_wifi_init(&cfg);
+        if(err){
+            log_e("esp_wifi_init %d", err);
             return false;
         }
+        esp_wifi_set_storage(WIFI_STORAGE_FLASH);
+        esp_wifi_set_mode(WIFI_MODE_NULL);
+        lowLevelInitDone = true;
     }
-    if(started){
+    return true;
+}
+
+static bool wifiLowLevelDeinit(){
+    //deinit not working yet!
+    //esp_wifi_deinit();
+    return true;
+}
+
+static bool _esp_wifi_started = false;
+
+static bool espWiFiStart(){
+    if(_esp_wifi_started){
         return true;
     }
-    started = true;
-    err = esp_wifi_start();
-    if (err != ESP_OK) {
-        log_e("%d", err);
+    if(!wifiLowLevelInit()){
         return false;
     }
-#if CONFIG_AUTOCONNECT_WIFI
-    wifi_mode_t mode = WIFI_MODE_NULL;
-    bool auto_connect = false;
-
-    err = esp_wifi_get_mode(&mode);
+    esp_err_t err = esp_wifi_start();
     if (err != ESP_OK) {
-        log_e("esp_wifi_get_mode: %d", err);
+        log_e("esp_wifi_start %d", err);
+        wifiLowLevelDeinit();
         return false;
     }
-
-    err = esp_wifi_get_auto_connect(&auto_connect);
-    if ((mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA) && auto_connect) {
-        err = esp_wifi_connect();
-        if (err != ESP_OK) {
-            log_e("esp_wifi_connect: %d", err);
-            return false;
-        }
-    }
-#endif
+    _esp_wifi_started = true;
     return true;
+}
+
+static bool espWiFiStop(){
+    esp_err_t err;
+    if(!_esp_wifi_started){
+        return true;
+    }
+    err = esp_wifi_stop();
+    if(err){
+        log_e("Could not stop WiFi! %u", err);
+        return false;
+    }
+    _esp_wifi_started = false;
+    return wifiLowLevelDeinit();
 }
 
 // -----------------------------------------------------------------------------------------------------------------------
@@ -168,13 +172,14 @@ void WiFiGenericClass::removeEvent(WiFiEventCb cbEvent, system_event_id_t event)
  */
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
 const char * system_event_names[] = { "WIFI_READY", "SCAN_DONE", "STA_START", "STA_STOP", "STA_CONNECTED", "STA_DISCONNECTED", "STA_AUTHMODE_CHANGE", "STA_GOT_IP", "STA_WPS_ER_SUCCESS", "STA_WPS_ER_FAILED", "STA_WPS_ER_TIMEOUT", "STA_WPS_ER_PIN", "AP_START", "AP_STOP", "AP_STACONNECTED", "AP_STADISCONNECTED", "AP_PROBEREQRECVED", "AP_STA_GOT_IP6", "ETH_START", "ETH_STOP", "ETH_CONNECTED", "ETH_DISCONNECTED", "ETH_GOT_IP", "MAX"};
+#endif
+#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_WARN
 const char * system_event_reasons[] = { "UNSPECIFIED", "AUTH_EXPIRE", "AUTH_LEAVE", "ASSOC_EXPIRE", "ASSOC_TOOMANY", "NOT_AUTHED", "NOT_ASSOCED", "ASSOC_LEAVE", "ASSOC_NOT_AUTHED", "DISASSOC_PWRCAP_BAD", "DISASSOC_SUPCHAN_BAD", "IE_INVALID", "MIC_FAILURE", "4WAY_HANDSHAKE_TIMEOUT", "GROUP_KEY_UPDATE_TIMEOUT", "IE_IN_4WAY_DIFFERS", "GROUP_CIPHER_INVALID", "PAIRWISE_CIPHER_INVALID", "AKMP_INVALID", "UNSUPP_RSN_IE_VERSION", "INVALID_RSN_IE_CAP", "802_1X_AUTH_FAILED", "CIPHER_SUITE_REJECTED", "BEACON_TIMEOUT", "NO_AP_FOUND", "AUTH_FAIL", "ASSOC_FAIL", "HANDSHAKE_TIMEOUT" };
-#define reason2str(r) ((r>174)?system_event_reasons[r-174]:system_event_reasons[r-1])
+#define reason2str(r) ((r>176)?system_event_reasons[r-176]:system_event_reasons[r-1])
 #endif
 esp_err_t WiFiGenericClass::_eventCallback(void *arg, system_event_t *event)
 {
     log_d("Event: %d - %s", event->event_id, system_event_names[event->event_id]);
-
     if(event->event_id == SYSTEM_EVENT_SCAN_DONE) {
         WiFiScanClass::_scanDone();
     } else if(event->event_id == SYSTEM_EVENT_STA_DISCONNECTED) {
@@ -186,6 +191,10 @@ esp_err_t WiFiGenericClass::_eventCallback(void *arg, system_event_t *event)
             WiFiSTAClass::_setStatus(WL_CONNECT_FAILED);
         } else if(reason == WIFI_REASON_BEACON_TIMEOUT || reason == WIFI_REASON_HANDSHAKE_TIMEOUT) {
             WiFiSTAClass::_setStatus(WL_CONNECTION_LOST);
+        } else if(reason == WIFI_REASON_AUTH_EXPIRE) {
+            if(WiFi.getAutoReconnect()){
+                WiFi.begin();
+            }
         } else {
             WiFiSTAClass::_setStatus(WL_DISCONNECTED);
         }
@@ -244,7 +253,16 @@ bool WiFiGenericClass::mode(wifi_mode_t m)
     if(cm == m) {
         return true;
     }
-    return esp_wifi_set_mode(m) == ESP_OK;
+    esp_err_t err;
+    err = esp_wifi_set_mode(m);
+    if(err){
+        log_e("Could not set mode! %u", err);
+        return false;
+    }
+    if(m){
+        return espWiFiStart();
+    }
+    return espWiFiStop();
 }
 
 /**
@@ -253,10 +271,10 @@ bool WiFiGenericClass::mode(wifi_mode_t m)
  */
 wifi_mode_t WiFiGenericClass::getMode()
 {
-    uint8_t mode;
-    if(!_esp_wifi_start()){
+    if(!wifiLowLevelInit()){
         return WIFI_MODE_MAX;
     }
+    uint8_t mode;
     esp_wifi_get_mode((wifi_mode_t*)&mode);
     return (wifi_mode_t)mode;
 }

@@ -28,27 +28,68 @@ typedef enum {
     DAC_CHANNEL_MAX,
 } dac_channel_t;
 
+
 /**
- * @brief Set Dac output voltage.
+  * @brief  Set DAC output voltage.
+  *
+  * @note Function has been deprecated, please use dac_output_voltage instead.
+  *       This name will be removed in a future release.
+  *       The difference is that before calling dac_output_voltage, we need to initialize the dac pad by dac_output_enable
+  *
+  *
+  * @param channel DAC channel
+  * @param dac_value DAC output value
+  *
+  * @return
+  *     - ESP_OK success
+  *     - ESP_ERR_INVALID_ARG Parameter error
+  */
+esp_err_t dac_out_voltage(dac_channel_t channel, uint8_t dac_value) __attribute__ ((deprecated));
+
+/**
+ * @brief Set DAC output voltage.
  *
- * Dac width is 8bit ,and the voltage max is vdd
+ * DAC output is 8-bit. Maximum (255) corresponds to VDD.
  *
- * @param channel dac channel
- * @param dac_value dac output value
+ * @note Need to configure DAC pad before calling this function.
+ *       DAC channel 1 is attached to GPIO25, DAC channel 2 is attached to GPIO26
+ *
+ * @param channel DAC channel
+ * @param dac_value DAC output value
  *
  * @return
  *     - ESP_OK success
  *     - ESP_ERR_INVALID_ARG Parameter error
  */
-esp_err_t dac_out_voltage(dac_channel_t channel, uint8_t dac_value);
+esp_err_t dac_output_voltage(dac_channel_t channel, uint8_t dac_value);
 
 /**
- *----------EXAMPLE TO USE DAC------------ *
- * @code{c}
- * dac_out_voltage(DAC_CHANNEL_1,200);//the dac out voltage ≈ 200*vdd/255
- * @endcode
- **/
+ * @brief DAC pad output enable
+ *
+ * @param channel DAC channel
+ * @note DAC channel 1 is attached to GPIO25, DAC channel 2 is attached to GPIO26
+ *       I2S left channel will be mapped to DAC channel 2
+ *       I2S right channel will be mapped to DAC channel 1
+ */
+esp_err_t dac_output_enable(dac_channel_t channel);
 
+/**
+ * @brief DAC pad output disable
+ *
+ * @param channel DAC channel
+ * @note DAC channel 1 is attached to GPIO25, DAC channel 2 is attached to GPIO26
+ */
+esp_err_t dac_output_disable(dac_channel_t channel);
+
+/**
+ * @brief Enable DAC output data from I2S
+ */
+esp_err_t dac_i2s_enable();
+
+/**
+ * @brief Disable DAC output data from I2S
+ */
+esp_err_t dac_i2s_disable();
 #ifdef __cplusplus
 }
 #endif

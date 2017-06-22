@@ -99,6 +99,7 @@ uint8_t WiFiUDP::beginMulticast(IPAddress a, uint16_t p){
 void WiFiUDP::stop(){
   if(tx_buffer){
     delete[] tx_buffer;
+    tx_buffer = NULL;
   }
   tx_buffer_len = 0;
   if(rx_buffer){
@@ -122,15 +123,37 @@ void WiFiUDP::stop(){
 int WiFiUDP::beginMulticastPacket(){
   if(!server_port || multicast_ip == IPAddress(INADDR_ANY))
     return 0;
-  remote_ip = server_port;
-  remote_port = multicast_ip;
+  remote_ip = multicast_ip;
+  remote_port = server_port;
   return beginPacket();
 }
 
 int WiFiUDP::beginPacket(){
   if(!remote_port)
     return 0;
+
+  // allocate tx_buffer if is necessary
+  if(!tx_buffer){
+    tx_buffer = new char[1460];
+    if(!tx_buffer){
+      log_e("could not create tx buffer: %d", errno);
+      return 0;
+    }
+  }
+
   tx_buffer_len = 0;
+
+  // check whereas socket is already open
+  if (udp_server != -1)
+    return 1;
+
+  if ((udp_server=socket(AF_INET, SOCK_DGRAM, 0)) == -1){
+    log_e("could not create socket: %d", errno);
+    return 0;
+  }
+
+  fcntl(udp_server, F_SETFL, O_NONBLOCK);
+
   return 1;
 }
 
